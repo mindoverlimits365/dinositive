@@ -1,4 +1,4 @@
-const C = 'pv-v7';
+const C = 'pv-v8';
 const A = ['./', './index.html', './manifest.json', './icon-192.png', './icon-512.png'];
 
 self.addEventListener('install', (e) => {

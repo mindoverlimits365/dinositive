@@ -15,9 +15,18 @@ function toast(m) { const t = $('#toast'); t.textContent = m; t.className = 'on'
 async function copy(t) { await navigator.clipboard.writeText(t); toast('Disalin — clipboard dihapus otomatis 20 dtk'); clearTimeout(copy.t); copy.t = setTimeout(() => navigator.clipboard.writeText(' ').catch(() => {}), 20000); }
 function dl(name, text) { const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([text], { type: 'application/octet-stream' })); a.download = name; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); }
 
-// ---- Secret Key (128-bit, tidak pernah disimpan di file backup) ----
-const genSK = () => [...rand(16)].map((x) => x.toString(16).padStart(2, '0')).join('').toUpperCase().match(/.{4}/g).join('-');
-const parseSK = (s) => { const h = (s || '').replace(/[^0-9a-f]/gi, ''); if (h.length !== 32) throw new Error('Secret Key harus 32 karakter hex'); return Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16))); };
+// ---- Secret Key manual 7 kata (atau kompatibel 32 hex lama) ----
+const normalizeWords = (s) => String(s || '').trim().toLowerCase().split(/[\s,-]+/).filter(Boolean);
+async function parseSK(s) {
+  const words = normalizeWords(s);
+  if (words.length === 7) {
+    const hash = await crypto.subtle.digest('SHA-256', te.encode(`DINOSITIVE-SK|${words.join('-')}`));
+    return new Uint8Array(hash);
+  }
+  const h = (s || '').replace(/[^0-9a-f]/gi, '');
+  if (h.length === 32) return Uint8Array.from(h.match(/../g).map((x) => parseInt(x, 16)));
+  throw new Error('Secret Key harus 7 kata (contoh: panda-ayam-kucing-kopi-langit-laut-bulan)');
+}
 
 // ---- Token Encode 7 karakter (CSPRNG tanpa karakter ambigu) ----
 const CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
@@ -44,14 +53,15 @@ async function login() {
   const saved = await getMeta('sk'), needSk = Boolean(env?.kdf?.sk && !saved);
   root.className = '';
   root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Akses terkunci. Masukkan kredensial Anda.</p>
-  <input id="pw" type="password" placeholder="Master Password" autocomplete="current-password">
-  ${needSk ? '<input id="sk" placeholder="Secret Key (XXXX-XXXX-…)" autocomplete="off" spellcheck="false"><label class="chk"><input id="rem" type="checkbox">Ingat Secret Key di perangkat ini</label>' : ''}
+  <label>Master Password<input id="pw" type="password" placeholder="Masukkan Master Password" autocomplete="current-password"></label>
+  ${needSk ? '<label>Secret Key (7 kata)<input id="sk" placeholder="contoh: panda-ayam-kucing-kopi-langit-laut-bulan" autocomplete="off" spellcheck="false"></label><label class="chk"><input id="rem" type="checkbox">Ingat Secret Key di perangkat ini</label>' : ''}
   <button class="btn gold" id="go" style="width:100%">Buka Akses</button><p id="err" class="err"></p></div>`;
   const go = async () => {
     const b = $('#go'), err = $('#err'); b.disabled = true; err.textContent = 'Memverifikasi…';
     try {
-      await S.unlock($('#pw').value, env?.kdf?.sk ? parseSK(needSk ? $('#sk').value : saved) : null);
-      if (needSk && $('#rem').checked) await setMeta('sk', $('#sk').value);
+      const skBytes = env?.kdf?.sk ? await parseSK(needSk ? $('#sk').value : saved) : null;
+      await S.unlock($('#pw').value, skBytes);
+      if (needSk && $('#rem').checked) await setMeta('sk', normalizeWords($('#sk').value).join('-'));
       login.f = 0; shell();
     } catch (e) {
       login.f = (login.f || 0) + 1;
@@ -65,66 +75,81 @@ async function login() {
   $('#pw').focus();
 }
 
-function restoreFromSetup() {
-  root.className = '';
-  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Pulihkan data dari perangkat lain menggunakan file backup (.dvault / .pvault), Master Password, dan Secret Key lama Anda.</p>
-  <input id="r_file" type="file" accept=".dvault,.pvault,.json">
-  <input id="r_pw" type="password" placeholder="Master Password lama" autocomplete="current-password">
-  <input id="r_sk" placeholder="Secret Key (XXXX-XXXX-…)" autocomplete="off" spellcheck="false">
-  <label class="chk"><input id="r_rem" type="checkbox">Ingat Secret Key di perangkat ini</label>
-  <button class="btn gold" id="r_go" style="width:100%">Pulihkan & Masuk</button>
-  <button id="r_back" style="width:100%;margin-top:8px">Kembali</button>
-  <p id="err" class="err"></p></div>`;
-  $('#r_back').onclick = setup;
-  $('#r_go').onclick = async () => {
-    const b = $('#r_go'), err = $('#err');
-    b.disabled = true; err.textContent = 'Memverifikasi backup…';
-    try {
-      const f = $('#r_file').files[0]; if (!f) throw new Error('Pilih file backup terlebih dahulu');
-      let env; try { env = JSON.parse(await f.text()); } catch { throw new Error('File bukan backup DINOSITIVE yang valid'); }
-      const skStr = $('#r_sk').value;
-      await S.importEnvelope(env, $('#r_pw').value, env?.kdf?.sk ? parseSK(skStr) : null);
-      if (env?.kdf?.sk && $('#r_rem').checked) await setMeta('sk', skStr);
-      toast('Backup berhasil dipulihkan');
-      shell();
-    } catch (e) {
-      err.textContent = e.code === 'DECRYPT_FAILED' ? 'Master Password atau Secret Key salah.' : (e.message || 'Gagal memulihkan backup');
-      b.disabled = false;
-    }
-  };
-}
+const SK_EXAMPLES = ['panda', 'ayam', 'kucing', 'kopi', 'langit', 'laut', 'bulan'];
 
 function setup() {
   root.className = '';
-  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Buat Master Password baru (minimal 12 karakter) untuk perangkat ini. Untuk masuk dari perangkat lama, gunakan tombol Pulihkan dari Backup.</p>
-  <input id="pw" type="password" placeholder="Master Password" autocomplete="new-password"><input id="pw2" type="password" placeholder="Ulangi Master Password" autocomplete="new-password">
+  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Buat Master Password baru (minimal 12 karakter).</p>
+  <label>Master Password<input id="pw" type="password" placeholder="Minimal 12 karakter" autocomplete="new-password"></label>
+  <label>Ulangi Master Password<input id="pw2" type="password" placeholder="Ketik ulang Master Password" autocomplete="new-password"></label>
   <button class="btn gold" id="go" style="width:100%">Lanjutkan</button>
-  <button id="hasbak" style="width:100%;margin-top:8px">Sudah punya backup? Pulihkan dari file</button>
   <p id="err" class="err"></p></div>`;
-  $('#hasbak').onclick = restoreFromSetup;
   $('#go').onclick = () => {
     const pw = $('#pw').value; if (pw.length < 12) return ($('#err').textContent = 'Minimal 12 karakter.');
     if (pw !== $('#pw2').value) return ($('#err').textContent = 'Konfirmasi tidak cocok.');
-    const sk = genSK();
-    root.innerHTML = `<div class="auth card"><h2>Simpan Secret Key Anda</h2><p class="mut">Secret Key + Master Password dibutuhkan untuk membuka data di perangkat baru maupun saat restore. Tidak disimpan di server dan tidak ada di file backup — simpan di tempat terpisah (kertas/brankas).</p>
-    <div class="card"><code style="font-size:17px">${sk}</code></div><div class="acts"><button id="kit">Unduh Emergency Kit</button></div><br>
-    <label class="chk"><input id="ack" type="checkbox">Saya sudah menyimpan Secret Key</label><button class="btn gold" id="ok" style="width:100%" disabled>Aktifkan Sekarang</button><p id="err" class="err"></p></div>`;
-    $('#kit').onclick = () => dl('DINOSITIVE-Emergency-Kit.txt', `DINOSITIVE — Emergency Kit\nSecret Key: ${sk}\n\nSimpan terpisah dari Master Password. Jangan bagikan.\nMaster Password TIDAK tercantum di sini.\n`);
-    $('#ack').onchange = (e) => ($('#ok').disabled = !e.target.checked);
-    $('#ok').onclick = async () => { $('#ok').disabled = true; $('#err').textContent = 'Membuat brankas…'; try { await S.create(pw, parseSK(sk)); shell(); } catch (e) { $('#err').textContent = e.message; $('#ok').disabled = false; } };
+    root.innerHTML = `<div class="auth card"><h2>Buat 7 Kata Secret Key</h2><p class="mut">Isi manual 7 kata unik pilihan Anda. Gabungan kata ini bersama Master Password dipakai untuk membuka akses.</p>
+    <div class="sk-grid">${SK_EXAMPLES.map((ex, idx) => `<div class="sk-item${idx === 6 ? ' full' : ''}"><label>Kata ${idx + 1}<input id="sk_${idx}" placeholder="${ex}" autocomplete="off" spellcheck="false"></label></div>`).join('')}</div>
+    <div class="sk-preview"><code id="sk_prev">Isi 7 kata di atas…</code></div>
+    <div style="margin-bottom:12px"><button id="kit" style="width:100%">Unduh Emergency Kit</button></div>
+    <label class="chk"><input id="ack" type="checkbox">Saya sudah mencatat 7 kata Secret Key ini</label>
+    <button class="btn gold" id="ok" style="width:100%" disabled>Aktifkan Sekarang</button>
+    <p id="err" class="err"></p></div>`;
+
+    const readWords = () => SK_EXAMPLES.map((_, i) => $(`#sk_${i}`).value.trim().toLowerCase().replace(/[\s,]+/g, ''));
+    const getSKString = () => {
+      const w = readWords();
+      return w.every(Boolean) ? w.join('-') : '';
+    };
+    const updatePreview = () => {
+      const w = readWords();
+      const filled = w.filter(Boolean);
+      $('#sk_prev').textContent = filled.length ? w.map((x) => x || '…').join('-') : 'Isi 7 kata di atas…';
+      $('#ok').disabled = !($('#ack').checked && w.every(Boolean));
+    };
+
+    SK_EXAMPLES.forEach((_, i) => {
+      $(`#sk_${i}`).addEventListener('input', updatePreview);
+    });
+    $('#ack').onchange = updatePreview;
+    $('#kit').onclick = () => {
+      const sk = getSKString();
+      if (!sk) return ($('#err').textContent = 'Lengkapi seluruh 7 kata Secret Key terlebih dahulu.');
+      $('#err').textContent = '';
+      dl('DINOSITIVE-Emergency-Kit.txt', `DINOSITIVE — Emergency Kit\nSecret Key: ${sk}\n\nSimpan terpisah dari Master Password. Jangan bagikan.\nMaster Password TIDAK tercantum di sini.\n`);
+    };
+    $('#ok').onclick = async () => {
+      const sk = getSKString();
+      if (!sk) return ($('#err').textContent = 'Lengkapi seluruh 7 kata Secret Key terlebih dahulu.');
+      $('#ok').disabled = true; $('#err').textContent = 'Membuat brankas…';
+      try {
+        await S.create(pw, await parseSK(sk));
+        shell();
+      } catch (e) {
+        $('#err').textContent = e.message;
+        updatePreview();
+      }
+    };
+    $('#sk_0').focus();
   };
 }
 
-// ---- Shell & tampilan ----
+// ---- Ikon SVG & navigasi ----
+const ICONS = {
+  enc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3l4 4-4 4"/><path d="M20 7H4"/><path d="M8 21l-4-4 4-4"/><path d="M4 17h16"/></svg>',
+  bak: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>',
+  set: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9c.26.6.79 1 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+  lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+};
+
 const NAV = [
-  ['enc', 'Encode & Decode', '⇄'],
-  ['bak', 'Backup & Restore', '⇪'],
-  ['set', 'Settings', '☰'],
+  ['enc', 'Encode & Decode', 'Encode'],
+  ['bak', 'Backup', 'Backup'],
+  ['set', 'Settings', 'Settings'],
 ];
 
 function shell() {
   root.className = 'shell';
-  root.innerHTML = `<aside><div class="logo">DINO<span>SITIVE</span></div>${NAV.map(([k, l, i]) => `<button class="nv" data-a="nav" data-id="${k}" title="${l}">${i} <span class="t">${l}</span></button>`).join('')}<button class="nv" data-a="lock" title="Lock Now">🔒 <span class="t">Lock Now</span></button></aside><main id="main"></main>`;
+  root.innerHTML = `<header class="mob-bar"><div class="logo">DINO<span>SITIVE</span></div><button class="mob-lock" data-a="lock">${ICONS.lock}<span>Lock</span></button></header><aside><div class="logo">DINO<span>SITIVE</span></div>${NAV.map(([k, l, m]) => `<button class="nv" data-a="nav" data-id="${k}" title="${l}">${ICONS[k]}<span class="t">${m}</span></button>`).join('')}<button class="nv desk-lock" data-a="lock" title="Lock Now">${ICONS.lock}<span class="t">Lock Now</span></button></aside><main id="main"></main>`;
   view = 'enc'; render();
 }
 
@@ -136,15 +161,14 @@ async function render() {
 
 const V = {
   enc() {
-    const count = Object.keys(S.data.encodeMap || {}).length;
-    return `<h2>Encode & Decode</h2><div class="card"><p class="mut">Menghasilkan kode pendek <b>7 karakter</b> yang terenkripsi (AES-256-GCM + Argon2id) dan terikat khusus ke akun serta domain <code>${esc(window.location.origin)}</code>. Kode tidak dapat didecode di situs atau akun lain, meskipun password encode diketahui. (${count} kode tersimpan)</p><label>Password asli (untuk Encode) atau kode 7 karakter (untuk Decode)<input id="e_in" autocomplete="off" spellcheck="false" placeholder="Masukkan password asli atau kode 7 karakter"></label><label>Password Encode<input id="e_pw" type="password" autocomplete="off" placeholder="Masukkan password pengunci"></label><div class="acts"><button class="btn gold" data-a="enc">Encode</button><button data-a="dec">Decode</button><button data-a="ocopy">Copy hasil</button></div><label>Hasil<input id="e_out" readonly placeholder="Hasil kode (7 karakter) atau password asli"></label></div>`;
+    return `<h2>Encode & Decode</h2><div class="card"><label>Password asli / Kode 7 karakter<input id="e_in" autocomplete="off" spellcheck="false" placeholder="Masukkan password asli atau kode 7 karakter"></label><label>Password Encode<input id="e_pw" type="password" autocomplete="off" placeholder="Masukkan password pengunci"></label><div class="acts"><button class="btn gold" data-a="enc">Encode</button><button data-a="dec">Decode</button><button data-a="ocopy">Copy Hasil</button></div><label>Hasil<input id="e_out" readonly placeholder="Kode 7 karakter atau password asli"></label></div>`;
   },
   bak() {
-    return `<h2>Backup & Restore</h2><div class="card"><h3>Export</h3><p class="mut">File backup (.dvault) tetap terenkripsi dan menyimpan seluruh kode 7 karakter Anda agar bisa didecode di perangkat lain. Terakhir: ${fmt(localStorage.getItem('lb'))}</p><button class="btn gold" data-a="export">Unduh Backup</button></div><div class="card"><h3>Restore dari file</h3><p class="mut">Mengganti data saat ini. Butuh Master Password & Secret Key milik file tersebut.</p><input id="i_file" type="file" accept=".dvault,.pvault,.json"><input id="i_pw" type="password" placeholder="Master Password file"><input id="i_sk" placeholder="Secret Key (jika ada)"><button data-a="import">Pulihkan</button></div>`;
+    return `<h2>Backup</h2><div class="card"><h3>Export Backup</h3><p class="mut">Unduh file backup terenkripsi (.dvault). Terakhir: ${fmt(localStorage.getItem('lb'))}</p><button class="btn gold" style="width:100%" data-a="export">Unduh Backup</button></div>`;
   },
   async set() {
     const sk = await getMeta('sk');
-    return `<h2>Settings</h2><div class="card"><label>Auto-lock<select id="s_al">${[[30, '30 detik'], [60, '1 menit'], [120, '2 menit'], [300, '5 menit']].map(([s, l]) => `<option value="${s}" ${s * 1000 === S.autoLockMs ? 'selected' : ''}>${l}</option>`).join('')}</select></label><button data-a="lock">Lock Now</button></div><div class="card"><h3>Secret Key di perangkat ini</h3><p class="mut">${sk ? 'Tersimpan (siapa pun yang memegang perangkat + Master Password bisa masuk).' : 'Tidak tersimpan — diminta setiap membuka aplikasi.'}</p>${sk ? '<button data-a="forget">Hapus dari perangkat</button>' : ''}</div><div class="card"><h3 class="bad">Zona bahaya</h3><button data-a="wipe">Hapus seluruh data di perangkat ini</button></div>`;
+    return `<h2>Settings</h2><div class="card"><label>Auto-lock<select id="s_al">${[[30, '30 detik'], [60, '1 menit'], [120, '2 menit'], [300, '5 menit']].map(([s, l]) => `<option value="${s}" ${s * 1000 === S.autoLockMs ? 'selected' : ''}>${l}</option>`).join('')}</select></label><button data-a="lock" style="width:100%">Lock Now</button></div><div class="card"><h3>Secret Key di perangkat ini</h3><p class="mut">${sk ? 'Tersimpan di perangkat ini.' : 'Tidak tersimpan — diminta setiap membuka aplikasi.'}</p>${sk ? '<button data-a="forget" style="width:100%">Hapus dari perangkat</button>' : ''}</div><div class="card"><h3 class="bad">Zona bahaya</h3><button data-a="wipe" style="width:100%">Hapus seluruh data di perangkat ini</button></div>`;
   },
 };
 
@@ -169,11 +193,8 @@ const A = {
     ));
     S.data.encodeMap[code] = { s: b64(salt), i: b64(iv), c: b64(ct) };
     await S.save();
-    await render();
-    $('#e_in').value = m;
-    $('#e_pw').value = pw;
     $('#e_out').value = code;
-    toast('Kode 7 karakter dibuat & disimpan terenkripsi');
+    toast('Kode 7 karakter dibuat');
   },
   async dec() {
     const code = $('#e_in').value.trim(), pw = $('#e_pw').value;
@@ -203,15 +224,6 @@ const A = {
     toast('Backup terenkripsi diunduh');
     render();
   },
-  async import() {
-    const f = $('#i_file').files[0]; if (!f) throw new Error('Pilih file backup');
-    let env; try { env = JSON.parse(await f.text()); } catch { throw new Error('File bukan JSON backup DINOSITIVE yang valid'); }
-    if (!confirm('Data saat ini akan DIGANTI oleh isi file backup. Lanjutkan?')) return;
-    await S.importEnvelope(env, $('#i_pw').value, env?.kdf?.sk ? parseSK($('#i_sk').value) : null);
-    await setMeta('sk', null);
-    toast('Restore berhasil');
-    render();
-  },
   async forget() { await setMeta('sk', null); render(); },
   async wipe() {
     if (prompt('Ketik HAPUS untuk menghapus semua data lokal (pastikan sudah backup)') !== 'HAPUS') return;
@@ -229,7 +241,7 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && S.
 function showFatal(msg) {
   if (!root || S.isUnlocked) return;
   root.className = '';
-  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="err">${esc(msg)}</p><button class="btn gold" onclick="location.reload()">Muat Ulang</button></div>`;
+  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="err">${esc(msg)}</p><button class="btn gold" style="width:100%" onclick="location.reload()">Muat Ulang</button></div>`;
 }
 
 window.addEventListener('error', (e) => {
