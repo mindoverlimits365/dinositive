@@ -9,8 +9,8 @@
     <meta property="og:description" content="Vault kata sandi terenkripsi sisi-klien dengan AES-256-GCM dan Argon2id." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
-    <link rel="manifest" href="/manifest.json" />
-    <link rel="icon" href="/icon-192.png" />
+    <link rel="manifest" href="./manifest.json" />
+    <link rel="icon" href="./icon-192.png" />
     <meta name="theme-color" content="#0B0D12" />
     <style>
       :root{--bg:#0B0D12;--card:#151922;--gold:#D6B15E;--tx:#F3F4F6;--mut:#8B93A3;--bd:#262B38;--bad:#E5736B;--ok:#6FBF8E;color-scheme:dark}
@@ -61,9 +61,10 @@
     </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div id="app"><div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="mut">Memuat aplikasi…</p></div></div>
+    <noscript><div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="err">Aktifkan JavaScript untuk menjalankan aplikasi ini.</p></div></noscript>
     <dialog id="dlg"></dialog>
     <div id="toast"></div>
-    <script type="module" src="/src/app.js"></script>
+    <script type="module" src="./src/app.js"></script>
   </body>
 </html>

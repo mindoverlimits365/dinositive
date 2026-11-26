@@ -45,7 +45,7 @@ function an() {
 async function login() {
   shown.clear(); try { $('#dlg').close(); } catch {}
   const env = await loadEnvelope(); if (!env) return setup();
-  const saved = await getMeta('sk'), needSk = env.kdf.sk && !saved;
+  const saved = await getMeta('sk'), needSk = Boolean(env?.kdf?.sk && !saved);
   root.className = '';
   root.innerHTML = `<div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="mut">Vault terkunci. Masukkan kredensial Anda.</p>
   <input id="pw" type="password" placeholder="Master Password" autocomplete="current-password">
@@ -54,7 +54,7 @@ async function login() {
   const go = async () => {
     const b = $('#go'), err = $('#err'); b.disabled = true; err.textContent = 'Memverifikasi…';
     try {
-      await S.unlock($('#pw').value, env.kdf.sk ? parseSK(needSk ? $('#sk').value : saved) : null);
+      await S.unlock($('#pw').value, env?.kdf?.sk ? parseSK(needSk ? $('#sk').value : saved) : null);
       if (needSk && $('#rem').checked) await setMeta('sk', $('#sk').value);
       login.f = 0; shell();
     } catch (e) {
@@ -176,7 +176,22 @@ document.addEventListener('change', async (e) => {
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.isUnlocked && Date.now() - last > S.autoLockMs) S.lock(); });
 
 (async () => {
-  S.autoLockMs = (await getMeta('autolock')) || 60000;
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
-  login();
+  try {
+    S.autoLockMs = (await getMeta('autolock')) || 60000;
+  } catch {
+    S.autoLockMs = 60000;
+  }
+  if ('serviceWorker' in navigator) {
+    if (import.meta.env.PROD) {
+      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    } else {
+      navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => {});
+    }
+  }
+  try {
+    await login();
+  } catch (err) {
+    root.className = '';
+    root.innerHTML = `<div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="err">Gagal memuat penyimpanan lokal (${esc(err?.message || 'IndexedDB tidak tersedia')}). Pastikan browser mengizinkan IndexedDB / tidak dalam mode terblokir.</p></div>`;
+  }
 })();
