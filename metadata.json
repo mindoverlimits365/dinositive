@@ -1,6 +1,6 @@
 {
-  "name": "PRIVY VAULT",
-  "description": "Vault kata sandi terenkripsi sisi-klien dengan AES-256-GCM dan Argon2id.",
+  "name": "DINOSITIVE",
+  "description": "Pengelola sandi dan encoder terenkripsi sisi-klien dengan AES-256 dan Argon2id.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

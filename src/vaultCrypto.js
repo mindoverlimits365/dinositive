@@ -1,7 +1,8 @@
-// Format envelope PRIVYVAULT v1 + AES-256-GCM. Lihat docs/FORMAT.md.
+// Format envelope DINOSITIVE v1 + AES-256-GCM.
 import { deriveKey, DEFAULT_KDF } from './kdf.js';
 
-export const MAGIC = 'PRIVYVAULT', VERSION = 1;
+export const MAGIC = 'DINOSITIVE', VERSION = 1;
+const ACCEPTED_MAGIC = new Set(['DINOSITIVE', 'PRIVYVAULT']);
 const enc = new TextEncoder(), dec = new TextDecoder();
 const rand = (n) => crypto.getRandomValues(new Uint8Array(n));
 export const b64 = (u8) => { let s = ''; for (const b of u8) s += String.fromCharCode(b); return btoa(s); };
@@ -17,7 +18,7 @@ const aad = (e) => enc.encode(JSON.stringify(
 
 export function validateEnvelope(e) {
   const bad = (m) => { throw new VaultError('INVALID_FILE', m); };
-  if (!e || e.magic !== MAGIC) bad('Bukan file PRIVY VAULT');
+  if (!e || !ACCEPTED_MAGIC.has(e.magic)) bad('Bukan file backup DINOSITIVE yang valid');
   if (e.version !== VERSION) bad('Versi format tidak didukung: ' + e.version);
   const k = e.kdf || {};
   if (k.alg !== 'argon2id') bad('KDF tidak didukung');
