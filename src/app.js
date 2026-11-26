@@ -175,6 +175,19 @@ document.addEventListener('change', async (e) => {
 ['pointerdown', 'keydown', 'scroll'].forEach((ev) => addEventListener(ev, () => { if (S.isUnlocked) { S.touch(); last = Date.now(); } }, { passive: true }));
 document.addEventListener('visibilitychange', () => { if (!document.hidden && S.isUnlocked && Date.now() - last > S.autoLockMs) S.lock(); });
 
+function showFatal(msg) {
+  if (!root || S.isUnlocked) return;
+  root.className = '';
+  root.innerHTML = `<div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="err">${esc(msg)}</p><button class="btn gold" onclick="location.reload()">Muat Ulang</button></div>`;
+}
+
+window.addEventListener('error', (e) => {
+  if (!root.querySelector('input') && !S.isUnlocked) showFatal(e.message || 'Terjadi kesalahan saat memuat aplikasi.');
+});
+window.addEventListener('unhandledrejection', (e) => {
+  if (!root.querySelector('input') && !S.isUnlocked) showFatal(e.reason?.message || 'Gagal menjalankan aplikasi.');
+});
+
 (async () => {
   try {
     S.autoLockMs = (await getMeta('autolock')) || 60000;
@@ -182,8 +195,11 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && S.
     S.autoLockMs = 60000;
   }
   if ('serviceWorker' in navigator) {
-    if (import.meta.env.PROD) {
-      navigator.serviceWorker.register('./sw.js').catch(() => {});
+    const inIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
+    if (import.meta.env.PROD && !inIframe) {
+      navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
+        .then((reg) => reg.update().catch(() => {}))
+        .catch(() => {});
     } else {
       navigator.serviceWorker.getRegistrations().then((regs) => regs.forEach((r) => r.unregister())).catch(() => {});
     }
@@ -191,7 +207,6 @@ document.addEventListener('visibilitychange', () => { if (!document.hidden && S.
   try {
     await login();
   } catch (err) {
-    root.className = '';
-    root.innerHTML = `<div class="auth card"><h1>PRIVY <span>VAULT</span></h1><p class="err">Gagal memuat penyimpanan lokal (${esc(err?.message || 'IndexedDB tidak tersedia')}). Pastikan browser mengizinkan IndexedDB / tidak dalam mode terblokir.</p></div>`;
+    showFatal(`Gagal memuat penyimpanan lokal (${err?.message || 'IndexedDB tidak tersedia'}). Pastikan browser mengizinkan IndexedDB / tidak dalam mode terblokir.`);
   }
 })();
