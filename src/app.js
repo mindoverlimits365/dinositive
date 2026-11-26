@@ -77,13 +77,46 @@ async function login() {
 
 const SK_COUNT = 7;
 
-function setup() {
+function setup(tab = 'in') {
   root.className = '';
-  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Buat Master Password baru (minimal 12 karakter).</p>
+  const tabs = `<div class="seg"><button type="button" id="t_in" class="${tab === 'in' ? 'on' : ''}">Masuk</button><button type="button" id="t_new" class="${tab === 'new' ? 'on' : ''}">Buat Baru</button></div>`;
+  if (tab === 'in') {
+    root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1>${tabs}
+    <label>File Backup (.dvault)<input id="r_file" type="file" accept=".dvault,.pvault,.json"></label>
+    <label>Master Password<input id="r_pw" type="password" placeholder="Masukkan Master Password" autocomplete="current-password"></label>
+    <label>Secret Key (7 kata)<input id="r_sk" placeholder="Masukkan 7 kata Secret Key" autocomplete="off" spellcheck="false"></label>
+    <label class="chk"><input id="r_rem" type="checkbox">Ingat Secret Key di perangkat ini</label>
+    <button class="btn gold" id="r_go" style="width:100%">Buka Akses</button>
+    <p id="err" class="err"></p></div>`;
+    $('#t_new').onclick = () => setup('new');
+    const doLogin = async () => {
+      const b = $('#r_go'), err = $('#err');
+      b.disabled = true; err.textContent = 'Memverifikasi…';
+      try {
+        const f = $('#r_file').files[0]; if (!f) throw new Error('Pilih file backup (.dvault) dari perangkat sebelumnya');
+        let env; try { env = JSON.parse(await f.text()); } catch { throw new Error('File backup tidak valid'); }
+        const skStr = $('#r_sk').value;
+        const skBytes = env?.kdf?.sk ? await parseSK(skStr) : null;
+        await S.importEnvelope(env, $('#r_pw').value, skBytes);
+        if (env?.kdf?.sk && $('#r_rem').checked) await setMeta('sk', normalizeWords(skStr).join('-'));
+        shell();
+      } catch (e) {
+        err.textContent = e.code === 'DECRYPT_FAILED' ? 'Master Password atau Secret Key salah.' : (e.message || 'Gagal masuk');
+        b.disabled = false;
+      }
+    };
+    $('#r_go').onclick = doLogin;
+    $('#r_sk').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !$('#r_go').disabled) doLogin(); });
+    return;
+  }
+
+  root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1>${tabs}
+  <p class="mut">Buat Master Password baru (minimal 12 karakter).</p>
   <label>Master Password<input id="pw" type="password" placeholder="Minimal 12 karakter" autocomplete="new-password"></label>
   <label>Ulangi Master Password<input id="pw2" type="password" placeholder="Ketik ulang Master Password" autocomplete="new-password"></label>
   <button class="btn gold" id="go" style="width:100%">Lanjutkan</button>
   <p id="err" class="err"></p></div>`;
+  $('#t_in').onclick = () => setup('in');
   $('#go').onclick = () => {
     const pw = $('#pw').value; if (pw.length < 12) return ($('#err').textContent = 'Minimal 12 karakter.');
     if (pw !== $('#pw2').value) return ($('#err').textContent = 'Konfirmasi tidak cocok.');
