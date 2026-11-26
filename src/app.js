@@ -196,7 +196,8 @@ window.addEventListener('unhandledrejection', (e) => {
   }
   if ('serviceWorker' in navigator) {
     const inIframe = (() => { try { return window.self !== window.top; } catch { return true; } })();
-    if (import.meta.env.PROD && !inIframe) {
+    const isViteDev = Boolean(typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.DEV);
+    if (!isViteDev && !inIframe) {
       navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' })
         .then((reg) => reg.update().catch(() => {}))
         .catch(() => {});
