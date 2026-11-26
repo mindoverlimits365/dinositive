@@ -54,7 +54,7 @@ async function login() {
   root.className = '';
   root.innerHTML = `<div class="auth card"><h1>DINO<span>SITIVE</span></h1><p class="mut">Akses terkunci. Masukkan kredensial Anda.</p>
   <label>Master Password<input id="pw" type="password" placeholder="Masukkan Master Password" autocomplete="current-password"></label>
-  ${needSk ? '<label>Secret Key (7 kata)<input id="sk" placeholder="contoh: panda-ayam-kucing-kopi-langit-laut-bulan" autocomplete="off" spellcheck="false"></label><label class="chk"><input id="rem" type="checkbox">Ingat Secret Key di perangkat ini</label>' : ''}
+  ${needSk ? '<label>Secret Key (7 kata)<input id="sk" placeholder="Masukkan 7 kata Secret Key" autocomplete="off" spellcheck="false"></label><label class="chk"><input id="rem" type="checkbox">Ingat Secret Key di perangkat ini</label>' : ''}
   <button class="btn gold" id="go" style="width:100%">Buka Akses</button><p id="err" class="err"></p></div>`;
   const go = async () => {
     const b = $('#go'), err = $('#err'); b.disabled = true; err.textContent = 'Memverifikasi…';
@@ -75,7 +75,7 @@ async function login() {
   $('#pw').focus();
 }
 
-const SK_EXAMPLES = ['panda', 'ayam', 'kucing', 'kopi', 'langit', 'laut', 'bulan'];
+const SK_COUNT = 7;
 
 function setup() {
   root.className = '';
@@ -88,14 +88,14 @@ function setup() {
     const pw = $('#pw').value; if (pw.length < 12) return ($('#err').textContent = 'Minimal 12 karakter.');
     if (pw !== $('#pw2').value) return ($('#err').textContent = 'Konfirmasi tidak cocok.');
     root.innerHTML = `<div class="auth card"><h2>Buat 7 Kata Secret Key</h2><p class="mut">Isi manual 7 kata unik pilihan Anda. Gabungan kata ini bersama Master Password dipakai untuk membuka akses.</p>
-    <div class="sk-grid">${SK_EXAMPLES.map((ex, idx) => `<div class="sk-item${idx === 6 ? ' full' : ''}"><label>Kata ${idx + 1}<input id="sk_${idx}" placeholder="${ex}" autocomplete="off" spellcheck="false"></label></div>`).join('')}</div>
+    <div class="sk-grid">${Array.from({ length: SK_COUNT }, (_, idx) => `<div class="sk-item${idx === 6 ? ' full' : ''}"><label>Kata ${idx + 1}<input id="sk_${idx}" autocomplete="off" spellcheck="false"></label></div>`).join('')}</div>
     <div class="sk-preview"><code id="sk_prev">Isi 7 kata di atas…</code></div>
     <div style="margin-bottom:12px"><button id="kit" style="width:100%">Unduh Emergency Kit</button></div>
     <label class="chk"><input id="ack" type="checkbox">Saya sudah mencatat 7 kata Secret Key ini</label>
     <button class="btn gold" id="ok" style="width:100%" disabled>Aktifkan Sekarang</button>
     <p id="err" class="err"></p></div>`;
 
-    const readWords = () => SK_EXAMPLES.map((_, i) => $(`#sk_${i}`).value.trim().toLowerCase().replace(/[\s,]+/g, ''));
+    const readWords = () => Array.from({ length: SK_COUNT }, (_, i) => $(`#sk_${i}`).value.trim().toLowerCase().replace(/[\s,]+/g, ''));
     const getSKString = () => {
       const w = readWords();
       return w.every(Boolean) ? w.join('-') : '';
@@ -107,7 +107,7 @@ function setup() {
       $('#ok').disabled = !($('#ack').checked && w.every(Boolean));
     };
 
-    SK_EXAMPLES.forEach((_, i) => {
+    Array.from({ length: SK_COUNT }).forEach((_, i) => {
       $(`#sk_${i}`).addEventListener('input', updatePreview);
     });
     $('#ack').onchange = updatePreview;
